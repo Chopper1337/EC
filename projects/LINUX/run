@@ -1,2 +1,14 @@
-g++ -o tux main.cpp ../../cs2/shared/cs2.cpp ../../cs2/shared/cs2features.cpp ../../apex/shared/apex.cpp ../../apex/shared/apexfeatures.cpp ../../library/vm/linux/vm.cpp -L. -I../../library/SDL3/include -O3 -lSDL3
+#!/usr/bin/env bash
+
+# Only run the script from the directory of the repo
+cd "$(cd "${0%/*}" && echo $PWD)" || exit
+
+g++ -o tux main.cpp \
+  ../../cs2/shared/cs2.cpp \
+  ../../cs2/shared/cs2features.cpp \
+  ../../apex/shared/apex.cpp \
+  ../../apex/shared/apexfeatures.cpp \
+  ../../library/vm/linux/vm.cpp \
+  -L. -I../../library/SDL3/include -O3 -lSDL3
+
 sudo sh -c 'export LD_LIBRARY_PATH=$(pwd);./tux'
