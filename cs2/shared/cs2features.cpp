@@ -120,18 +120,42 @@ inline void cs2::features::update_settings(void)
 	//
 	// mouse5 aimkey, mouse4 triggerkey
 	//
-	case 244:
-		config::aimbot_button     = 321;
+  
+	case 240:
+		config::aimbot_button     = 317;
 		config::triggerbot_button = 320;
-		config::aimbot_fov        = 2.0f;
+		config::aimbot_fov        = 5.0f;
 		config::aimbot_smooth     = 5.0f;
-		config::visuals_enabled   = 0;
 		break;
-	case 245:
-		config::aimbot_button     = 321;
+	case 241:
+		config::aimbot_button     = 317;
+		config::triggerbot_button = 320;
+		config::aimbot_fov        = 5.0f;
+		config::aimbot_smooth     = 10.0f;
+		break;
+	case 242:
+		config::aimbot_button     = 317;
 		config::triggerbot_button = 320;
 		config::aimbot_fov        = 2.5f;
-		config::aimbot_smooth     = 4.5f;
+		config::aimbot_smooth     = 10.0f;
+		break;
+	case 243:
+		config::aimbot_button     = 317;
+		config::triggerbot_button = 320;
+		config::aimbot_fov        = 1.0f;
+		config::aimbot_smooth     = 10.0f;
+		break;
+	case 244:
+		config::aimbot_button     = 317;
+		config::triggerbot_button = 320;
+		config::aimbot_fov        = 1.0f;
+		config::aimbot_smooth     = 20.0f;
+		break;
+	case 245:
+		config::aimbot_button     = 317;
+		config::triggerbot_button = 320;
+		config::aimbot_fov        = 0.6f;
+		config::aimbot_smooth     = 80.0f;
 		break;
 	case 246:
 		config::aimbot_button     = 321;
@@ -145,61 +169,64 @@ inline void cs2::features::update_settings(void)
 		config::aimbot_fov        = 3.5f;
 		config::aimbot_smooth     = 3.5f;
 		break;
+	//
+	// mouse1 aimkey, mouse4 triggerkey
+	//
 	case 248:
-		config::aimbot_button     = 321;
+		config::aimbot_button     = 317;
 		config::triggerbot_button = 320;
-		config::aimbot_fov        = 4.0f;
-		config::aimbot_smooth     = 3.0f;
+		config::aimbot_fov        = 5.0f;
+		config::aimbot_smooth     = 0.0f;
 		break;
 	case 249:
-		config::aimbot_button     = 321;
+		config::aimbot_button     = 317;
 		config::triggerbot_button = 320;
-		config::aimbot_fov        = 4.5f;
-		config::aimbot_smooth     = 2.5f;
+		config::aimbot_fov        = 5.0f;
+		config::aimbot_smooth     = 1.4f;
 		break;
-	//
-	// mouse1 aimkey, mouse5 triggerkey
-	//
 	case 250:
 		config::aimbot_button     = 317;
-		config::triggerbot_button = 321;
-		config::aimbot_fov        = 2.0f;
+		config::triggerbot_button = 320;
+		config::aimbot_fov        = 5.0f;
 		config::aimbot_smooth     = 5.0f;
-		config::visuals_enabled   = 0;
 		break;
 	case 251:
 		config::aimbot_button     = 317;
-		config::triggerbot_button = 321;
-		config::aimbot_fov        = 2.5f;
-		config::aimbot_smooth     = 4.5f;
+		config::triggerbot_button = 320;
+		config::aimbot_fov        = 5.0f;
+		config::aimbot_smooth     = 10.0f;
 		break;
 	case 252:
 		config::aimbot_button     = 317;
-		config::triggerbot_button = 321;
-		config::aimbot_fov        = 3.0f;
-		config::aimbot_smooth     = 4.0f;
+		config::triggerbot_button = 320;
+		config::aimbot_fov        = 2.5f;
+		config::aimbot_smooth     = 10.0f;
+		config::visuals_enabled   = 0;
 		break;
 	case 253:
 		config::aimbot_button     = 317;
-		config::triggerbot_button = 321;
-		config::aimbot_fov        = 3.5f;
-		config::aimbot_smooth     = 3.5f;
+		config::triggerbot_button = 320;
+		config::aimbot_fov        = 1.0f;
+		config::aimbot_smooth     = 10.0f;
+		config::visuals_enabled   = 0;
 		break;
 	case 254:
 		config::aimbot_button     = 317;
-		config::triggerbot_button = 321;
-		config::aimbot_fov        = 4.0f;
-		config::aimbot_smooth     = 3.0f;
+		config::triggerbot_button = 320;
+		config::aimbot_fov        = 1.0f;
+		config::aimbot_smooth     = 20.0f;
+		config::visuals_enabled   = 0;
 		break;
 	case 255:
 		config::aimbot_button     = 317;
-		config::triggerbot_button = 321;
-		config::aimbot_fov        = 4.5f;
-		config::aimbot_smooth     = 2.5f;
+		config::triggerbot_button = 320;
+		config::aimbot_fov        = 0.6f;
+		config::aimbot_smooth     = 80.0f;
+		config::visuals_enabled   = 0;
 		break;
 	default:
 		config::aimbot_button     = 317;
-		config::triggerbot_button = 321;
+		config::triggerbot_button = 320;
 		config::aimbot_fov        = 2.0f;
 		config::aimbot_smooth     = 5.0f;
 		config::visuals_enabled   = 0;
