@@ -1,9 +1,12 @@
 # EC
 open-source EC
 
-# Win11 24H2
-- no EFI support
+## Usage
 
-# 14/10/2024
-- archived repository
-- OS / game updates -> do it yourself
+```
+git clone https://github.com/Chopper1337/EC.git --recursive && \
+./EC/projects/LINUX/run
+```
+
+Be sure to have a performant compositor running such as [fastcompmgr](https://github.com/tycho-kirchner/fastcompmgr) or the overlay will not be transparent.
+(See [here](https://github.com/tycho-kirchner/fastcompmgr?tab=readme-ov-file#benchmark))
