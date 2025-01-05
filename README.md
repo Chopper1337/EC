@@ -19,8 +19,6 @@ Change `cl_crosshairalpha` in game to switch the config.
 
 I have created a few usable configurations.
 
-
-
 | `cl_crosshairalpha` | Aim FOV | Aim smooth | Visuals |
 | ------------- | -------------- | -------------- | -------------- |
 | 255 | 0.6 | 80 | Disabled | 
@@ -41,3 +39,16 @@ I have created a few usable configurations.
 240 to 245 are the same settings are 250 to 255 but with visuals always enabled.
 
 230 and 231 are basically semi rage.
+
+## Bindings
+
+* Aimbot: Mouse 1
+* Triggerbot: Mouse 4
+
+You can use the in game binds system to toggle between configs:
+
+`bind z "toggle cl_crosshairalpha 253 243"`
+
+In this example, press `z` would essentially toggle visuals.
+
+I'd suggest setting up numpad binds between 0 and 5 to toggle between configs in the 240-245 and 250-255 range.
