@@ -29,14 +29,15 @@ I have created a few usable configurations.
 | 252 | 2.5 | 10 | Disabled | 
 | 251 | 5.0 | 10 | Enabled | 
 | 250 | 5.0 | 5 | Enabled | 
-| 249 | 5.0 | 1.4 | Enabled | 
-| 248 | 5 | 0 | Enabled | 
 | 245 | 0.6 | 80 | Enabled | 
 | 244 | 1.0 | 20 | Enabled | 
 | 243 | 1 | 10 | Enabled | 
 | 242 | 2.5 | 10 | Enabled | 
 | 241 | 5.0 | 10 | Enabled | 
 | 240 | 5.0 | 5 | Enabled | 
+| 231 | 5.0 | 1.4 | Enabled | 
+| 230 | 5 | 0 | Enabled | 
 
 240 to 245 are the same settings are 250 to 255 but with visuals always enabled.
-246 and 247 are not configured
+
+230 and 231 are basically semi rage.

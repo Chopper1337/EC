@@ -118,9 +118,20 @@ inline void cs2::features::update_settings(void)
 	switch (crosshair_alpha)
 	{
 	//
-	// mouse5 aimkey, mouse4 triggerkey
+	// mouse1 aimkey, mouse4 triggerkey
 	//
-  
+	case 230:
+		config::aimbot_button     = 317;
+		config::triggerbot_button = 320;
+		config::aimbot_fov        = 5.0f;
+		config::aimbot_smooth     = 0.0f;
+		break;
+	case 231:
+		config::aimbot_button     = 317;
+		config::triggerbot_button = 320;
+		config::aimbot_fov        = 5.0f;
+		config::aimbot_smooth     = 1.4f;
+		break;
 	case 240:
 		config::aimbot_button     = 317;
 		config::triggerbot_button = 320;
@@ -156,21 +167,6 @@ inline void cs2::features::update_settings(void)
 		config::triggerbot_button = 320;
 		config::aimbot_fov        = 0.6f;
 		config::aimbot_smooth     = 80.0f;
-		break;
-	//
-	// mouse1 aimkey, mouse4 triggerkey
-	//
-	case 248:
-		config::aimbot_button     = 317;
-		config::triggerbot_button = 320;
-		config::aimbot_fov        = 5.0f;
-		config::aimbot_smooth     = 0.0f;
-		break;
-	case 249:
-		config::aimbot_button     = 317;
-		config::triggerbot_button = 320;
-		config::aimbot_fov        = 5.0f;
-		config::aimbot_smooth     = 1.4f;
 		break;
 	case 250:
 		config::aimbot_button     = 317;
