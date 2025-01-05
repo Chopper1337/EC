@@ -157,18 +157,6 @@ inline void cs2::features::update_settings(void)
 		config::aimbot_fov        = 0.6f;
 		config::aimbot_smooth     = 80.0f;
 		break;
-	case 246:
-		config::aimbot_button     = 321;
-		config::triggerbot_button = 320;
-		config::aimbot_fov        = 3.0f;
-		config::aimbot_smooth     = 4.0f;
-		break;
-	case 247:
-		config::aimbot_button     = 321;
-		config::triggerbot_button = 320;
-		config::aimbot_fov        = 3.5f;
-		config::aimbot_smooth     = 3.5f;
-		break;
 	//
 	// mouse1 aimkey, mouse4 triggerkey
 	//
