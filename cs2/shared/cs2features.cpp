@@ -173,12 +173,14 @@ inline void cs2::features::update_settings(void)
 		config::triggerbot_button = 320;
 		config::aimbot_fov        = 5.0f;
 		config::aimbot_smooth     = 5.0f;
+		config::visuals_enabled   = 0;
 		break;
 	case 251:
 		config::aimbot_button     = 317;
 		config::triggerbot_button = 320;
 		config::aimbot_fov        = 5.0f;
 		config::aimbot_smooth     = 10.0f;
+		config::visuals_enabled   = 0;
 		break;
 	case 252:
 		config::aimbot_button     = 317;

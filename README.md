@@ -27,8 +27,8 @@ I have created a few usable configurations.
 | 254 | 1.0 | 20 | Disabled | 
 | 253 | 1 | 10 | Disabled | 
 | 252 | 2.5 | 10 | Disabled | 
-| 251 | 5.0 | 10 | Enabled | 
-| 250 | 5.0 | 5 | Enabled | 
+| 251 | 5.0 | 10 | Disabled | 
+| 250 | 5.0 | 5 | Disabled | 
 | 245 | 0.6 | 80 | Enabled | 
 | 244 | 1.0 | 20 | Enabled | 
 | 243 | 1 | 10 | Enabled | 
