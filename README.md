@@ -19,19 +19,19 @@ Change `cl_crosshairalpha` in game to switch between configurations listed in th
 
 | `cl_crosshairalpha` | Aim FOV | Aim smooth | Visuals |
 | ------------- | -------------- | -------------- | -------------- |
-| 255 | 0.6 | 80 | Disabled | 
-| 254 | 1.0 | 20 | Disabled | 
-| 253 | 1 | 10 | Disabled | 
-| 252 | 2.5 | 10 | Disabled | 
-| 251 | 5.0 | 10 | Disabled | 
-| 250 | 5.0 | 5 | Disabled | 
-| 245 | 0.6 | 80 | Enabled | 
-| 244 | 1.0 | 20 | Enabled | 
-| 243 | 1 | 10 | Enabled | 
-| 242 | 2.5 | 10 | Enabled | 
-| 241 | 5.0 | 10 | Enabled | 
-| 240 | 5.0 | 5 | Enabled | 
-| 231 | 5.0 | 1.4 | Enabled | 
+| 255 | 0.6 | 160 | Disabled | 
+| 254 | 1.0 | 40 | Disabled | 
+| 253 | 1 | 20 | Disabled | 
+| 252 | 2.5 | 20 | Disabled | 
+| 251 | 5.0 | 20 | Disabled | 
+| 250 | 5.0 | 10 | Disabled | 
+| 245 | 0.6 | 160 | Enabled | 
+| 244 | 1.0 | 40 | Enabled | 
+| 243 | 1 | 20 | Enabled | 
+| 242 | 2.5 | 20 | Enabled | 
+| 241 | 5.0 | 20 | Enabled | 
+| 240 | 5.0 | 10 | Enabled | 
+| 231 | 5.0 | 2.8 | Enabled | 
 | 230 | 5 | 0 | Enabled | 
 
 `cl_crosshairalpha` values 240 to 245 have visuals enabled, while 250 to 255 have them disabled.
