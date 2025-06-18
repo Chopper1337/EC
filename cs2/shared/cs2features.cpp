@@ -120,91 +120,91 @@ inline void cs2::features::update_settings(void) {
     config::aimbot_button = 317;
     config::triggerbot_button = 320;
     config::aimbot_fov = 5.0f;
-    config::aimbot_smooth = 1.4f;
+    config::aimbot_smooth = 2.8f;
     break;
   case 240:
     config::aimbot_button = 317;
     config::triggerbot_button = 320;
     config::aimbot_fov = 5.0f;
-    config::aimbot_smooth = 5.0f;
+    config::aimbot_smooth = 10.0f;
     break;
   case 241:
     config::aimbot_button = 317;
     config::triggerbot_button = 320;
     config::aimbot_fov = 5.0f;
-    config::aimbot_smooth = 10.0f;
+    config::aimbot_smooth = 20.0f;
     break;
   case 242:
     config::aimbot_button = 317;
     config::triggerbot_button = 320;
     config::aimbot_fov = 2.5f;
-    config::aimbot_smooth = 10.0f;
+    config::aimbot_smooth = 20.0f;
     break;
   case 243:
     config::aimbot_button = 317;
     config::triggerbot_button = 320;
     config::aimbot_fov = 1.0f;
-    config::aimbot_smooth = 10.0f;
+    config::aimbot_smooth = 20.0f;
     break;
   case 244:
     config::aimbot_button = 317;
     config::triggerbot_button = 320;
     config::aimbot_fov = 1.0f;
-    config::aimbot_smooth = 20.0f;
+    config::aimbot_smooth = 40.0f;
     break;
   case 245:
     config::aimbot_button = 317;
     config::triggerbot_button = 320;
     config::aimbot_fov = 0.6f;
-    config::aimbot_smooth = 80.0f;
+    config::aimbot_smooth = 160.0f;
     break;
   case 250:
     config::aimbot_button = 317;
     config::triggerbot_button = 320;
     config::aimbot_fov = 5.0f;
-    config::aimbot_smooth = 5.0f;
+    config::aimbot_smooth = 10.0f;
     config::visuals_enabled = 0;
     break;
   case 251:
     config::aimbot_button = 317;
     config::triggerbot_button = 320;
     config::aimbot_fov = 5.0f;
-    config::aimbot_smooth = 10.0f;
+    config::aimbot_smooth = 20.0f;
     config::visuals_enabled = 0;
     break;
   case 252:
     config::aimbot_button = 317;
     config::triggerbot_button = 320;
     config::aimbot_fov = 2.5f;
-    config::aimbot_smooth = 10.0f;
+    config::aimbot_smooth = 20.0f;
     config::visuals_enabled = 0;
     break;
   case 253:
     config::aimbot_button = 317;
     config::triggerbot_button = 320;
     config::aimbot_fov = 1.0f;
-    config::aimbot_smooth = 10.0f;
+    config::aimbot_smooth = 20.0f;
     config::visuals_enabled = 0;
     break;
   case 254:
     config::aimbot_button = 317;
     config::triggerbot_button = 320;
     config::aimbot_fov = 1.0f;
-    config::aimbot_smooth = 20.0f;
+    config::aimbot_smooth = 40.0f;
     config::visuals_enabled = 0;
     break;
   case 255:
     config::aimbot_button = 317;
     config::triggerbot_button = 320;
     config::aimbot_fov = 0.6f;
-    config::aimbot_smooth = 80.0f;
+    config::aimbot_smooth = 160.0f;
     config::visuals_enabled = 0;
     break;
   default:
     config::aimbot_button = 317;
     config::triggerbot_button = 320;
     config::aimbot_fov = 2.0f;
-    config::aimbot_smooth = 5.0f;
+    config::aimbot_smooth = 10.0f;
     config::visuals_enabled = 0;
     break;
   }
@@ -333,7 +333,7 @@ void cs2::features::run(void) {
   // if we are holding triggerbot key, force head only
   //
   if (b_triggerbot_button) {
-    config::aimbot_multibone = 0;
+    config::aimbot_multibone = 1;
   }
 
   BOOL ffa = cs2::gamemode::is_ffa();
@@ -507,11 +507,11 @@ void cs2::features::run(void) {
       smooth_y = y;
     }
     ms = (DWORD)(config::aimbot_smooth / 100.0f) + 1;
-    ms = ms * 16;
+    ms = ms * 8;
   } else {
     smooth_x = x;
     smooth_y = y;
-    ms = 16;
+    ms = 8;
   }
 
   DWORD current_ms = cs2::engine::get_current_ms();
@@ -523,6 +523,7 @@ void cs2::features::run(void) {
 
 static vec3 cs2::features::get_target_angle(QWORD local_player, vec3 position,
                                             DWORD num_shots, vec2 aim_punch) {
+                                            
   vec3 eye_position =
       cs2::node::get_origin(cs2::player::get_node(local_player));
   eye_position.z += cs2::player::get_vec_view(local_player);
@@ -567,51 +568,31 @@ static void cs2::features::get_best_target(BOOL ffa, QWORD local_controller,
   vec3 angle{};
   vec3 aimpos{};
 
+  // for each player
   for (int i = 1; i < 64; i++) {
     QWORD ent = cs2::entity::get_client_entity(i);
-    if (ent == 0 || (ent == local_controller)) {
-      continue;
-    }
 
-    //
+    if (ent == 0 || (ent == local_controller)) continue;
+
     // is controller
-    //
-    if (!cs2::entity::is_player(ent)) {
-      continue;
-    }
+    if (!cs2::entity::is_player(ent)) continue;
 
     QWORD player = cs2::entity::get_player(ent);
-    if (player == 0) {
-      continue;
-    }
+    if (player == 0) continue;
 
-    if (ffa == 0) {
-      if (cs2::player::get_team_num(player) ==
-          cs2::player::get_team_num(local_player)) {
-        continue;
-      }
-    }
+    if (ffa == 0 && (cs2::player::get_team_num(player) == cs2::player::get_team_num(local_player))) continue;
 
     QWORD node = cs2::player::get_node(player);
-    if (node == 0) {
-      continue;
-    }
+    if (node == 0) continue;
 
-    if (!cs2::player::is_valid(player, node)) {
-      continue;
-    }
+    if (!cs2::player::is_valid(player, node)) continue;
 
     vec3 head{};
-    if (!cs2::node::get_bone_position(node, 6, &head)) {
-      continue;
-    }
+    if (!cs2::node::get_bone_position(node, 6, &head)) continue;
 
-    if (config::visuals_enabled) {
-      esp(local_player, player, head);
-    }
+    if (config::visuals_enabled) esp(local_player, player, head);
 
-    vec3 best_angle =
-        get_target_angle(local_player, head, num_shots, aim_punch);
+    vec3 best_angle = get_target_angle(local_player, head, num_shots, aim_punch);
 
     float fov = math::get_fov(va, *(vec3 *)&best_angle);
 
