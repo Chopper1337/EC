@@ -15,9 +15,9 @@ Be sure to have a performant compositor running such as [fastcompmgr](https://gi
 
 Configuration is done by editing the `./cs2/shared/cs2features.cpp` file.
 
-Change `cl_crosshairalpha` in game to switch between configurations listed in the table below.
+Change `mm_dedicated_search_maxping` in game to switch between configurations listed in the table below.
 
-| `cl_crosshairalpha` | Aim FOV | Aim smooth | Visuals |
+| `mm_dedicated_search_maxping` | Aim FOV | Aim smooth | Visuals |
 | ------------- | -------------- | -------------- | -------------- |
 | 255 | 0.6 | 160 | Disabled | 
 | 254 | 1.0 | 40 | Disabled | 
@@ -46,7 +46,7 @@ The last digit (0 to 5) indicates aimbot strength, with lower values providing s
 
 You can use the in game binds system to toggle between configs:
 
-`bind z "toggle cl_crosshairalpha 253 243"`
+`bind z "toggle mm_dedicated_search_maxping 253 243"`
 
 In this example, pressing `z` would essentially toggle visuals.
 

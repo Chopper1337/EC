@@ -3,12 +3,35 @@
 # Only run the script from the directory of the repo
 cd "$(cd "${0%/*}" && echo $PWD)" || exit
 
+#
+# generate the wlr-layer-shell protocol bindings
+#
+mkdir -p gen
+wayland-scanner client-header /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml gen/xdg-shell-client-protocol.h
+wayland-scanner private-code /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml gen/xdg-shell-protocol.c
+wayland-scanner client-header protocols/wlr-layer-shell-unstable-v1.xml gen/wlr-layer-shell-unstable-v1-client-protocol.h
+wayland-scanner private-code protocols/wlr-layer-shell-unstable-v1.xml gen/wlr-layer-shell-unstable-v1-protocol.c
+
+#
+# protocol C code must be compiled as C (extern "C" mangling)
+#
+gcc -c gen/xdg-shell-protocol.c -o gen/xdg-shell-protocol.o -fPIC
+gcc -c gen/wlr-layer-shell-unstable-v1-protocol.c -o gen/wlr-layer-shell-unstable-v1-protocol.o -fPIC
+
+WAYLAND_CFLAGS=$(pkg-config --cflags wayland-client wayland-egl egl gl)
+WAYLAND_LIBS=$(pkg-config --libs wayland-client wayland-egl egl gl)
+
 g++ -o xdotool main.cpp \
   ../../cs2/shared/cs2.cpp \
   ../../cs2/shared/cs2features.cpp \
   ../../apex/shared/apex.cpp \
   ../../apex/shared/apexfeatures.cpp \
   ../../library/vm/linux/vm.cpp \
-  -L. -I../../library/SDL3/include -O3 -lSDL3
+  wayland.cpp \
+  gen/xdg-shell-protocol.o \
+  gen/wlr-layer-shell-unstable-v1-protocol.o \
+  -Igen \
+  -L. -I../../library/SDL3/include -O3 -lSDL3 \
+  $WAYLAND_CFLAGS $WAYLAND_LIBS
 
-sudo sh -c 'export LD_LIBRARY_PATH=$(pwd);./xdotool'
+sudo -E sh -c 'export LD_LIBRARY_PATH=$(pwd);./xdotool'

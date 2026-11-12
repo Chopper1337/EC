@@ -12,8 +12,11 @@
 #include <unistd.h>
 
 #include "../../library/SDL3/include/SDL3/SDL.h"
+#include "wayland.h"
 
 static SDL_Renderer *renderer;
+
+static BOOL wayland_mode;
 
 static int fd;
 
@@ -72,6 +75,11 @@ void mouse1_up(void) { send_input(fd, EV_KEY, 0x110, 0); }
 
 void DrawRect(void *hwnd, int x, int y, int w, int h, unsigned char r,
               unsigned char g, unsigned char b) {
+  if (wayland_mode) {
+    wl::draw_rect((float)x, (float)y, (float)w, (float)h, r, g, b);
+    return;
+  }
+
   SDL_FRect rect{};
   rect.x = (float)x;
   rect.y = (float)y;
@@ -86,6 +94,11 @@ void DrawRect(void *hwnd, int x, int y, int w, int h, unsigned char r,
 
 void DrawFillRect(void *hwnd, int x, int y, int w, int h, unsigned char r,
                   unsigned char g, unsigned char b) {
+  if (wayland_mode) {
+    wl::draw_fill_rect((float)x, (float)y, (float)w, (float)h, r, g, b);
+    return;
+  }
+
   SDL_FRect rect{};
   rect.x = (float)x;
   rect.y = (float)y;
@@ -96,10 +109,67 @@ void DrawFillRect(void *hwnd, int x, int y, int w, int h, unsigned char r,
 }
 } // namespace client
 
+static void run_games(void) {
+  if (cs2::game_handle) {
+    if (cs2::running()) {
+      cs2::features::run();
+    } else {
+      cs2::features::reset();
+    }
+  }
+  /*
+  else if (csgo::game_handle)
+  {
+          if (csgo::running())
+          {
+                  csgo::features::run();
+          }
+          else
+          {
+                  csgo::features::reset();
+          }
+  }
+  */
+  else if (apex::game_handle) {
+    if (apex::running()) {
+      apex::features::run();
+    } else {
+      apex::features::reset();
+    }
+  } else {
+    BOOL is_running = 0;
+    if (!is_running)
+      is_running = cs2::running();
+    // if (!is_running) is_running = csgo::running();
+    if (!is_running)
+      is_running = apex::running();
+  }
+}
+
 int main(void) {
   fd = open_device("event-mouse", 11);
   if (fd == -1) {
     LOG("failed to open mouse\n");
+    return 0;
+  }
+
+  if (wl::init()) {
+    wayland_mode = 1;
+
+    while (!wl::should_close()) {
+      wl::pump();
+      if (wl::should_close()) {
+        break;
+      }
+
+      wl::frame_begin();
+      run_games();
+      wl::frame_end();
+
+      usleep(1000);
+    }
+
+    wl::shutdown();
     return 0;
   }
 
@@ -161,40 +231,7 @@ int main(void) {
 
     SDL_RenderClear(renderer);
 
-    if (cs2::game_handle) {
-      if (cs2::running()) {
-        cs2::features::run();
-      } else {
-        cs2::features::reset();
-      }
-    }
-    /*
-    else if (csgo::game_handle)
-    {
-            if (csgo::running())
-            {
-                    csgo::features::run();
-            }
-            else
-            {
-                    csgo::features::reset();
-            }
-    }
-    */
-    else if (apex::game_handle) {
-      if (apex::running()) {
-        apex::features::run();
-      } else {
-        apex::features::reset();
-      }
-    } else {
-      BOOL is_running = 0;
-      if (!is_running)
-        is_running = cs2::running();
-      // if (!is_running) is_running = csgo::running();
-      if (!is_running)
-        is_running = apex::running();
-    }
+    run_games();
 
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
     SDL_RenderPresent(renderer);

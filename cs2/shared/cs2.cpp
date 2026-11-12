@@ -1,5 +1,7 @@
 #include "cs2.h"
 
+#include <cmath>
+
 namespace cs2 {
 vm_handle game_handle = 0;
 
@@ -19,13 +21,14 @@ static QWORD player;
 namespace direct {
 static QWORD local_player;
 static QWORD view_matrix;
+static QWORD view_proj;
 static DWORD button_state;
 } // namespace direct
 
 namespace convars {
 static QWORD sensitivity;
 static QWORD mp_teammates_are_enemies;
-static QWORD cl_crosshairalpha;
+static QWORD mm_dedicated_search_maxping;
 } // namespace convars
 
 namespace netvars {
@@ -107,6 +110,106 @@ inline int get_button_off() {
     goto field;
 
 #endif
+
+//
+// scan the client module's bss for the live world->camera matrix and cache it.
+// the pattern-based view matrix offsets are stale, so the matrix is found by
+// structure instead: a 4x4 affine matrix with bottom row (0,0,0,1), an
+// orthonormal + right-handed 3x3 part, a sane translation and no roll (so the
+// first row's z component stays near zero).
+//
+static QWORD resolve_view_matrix(QWORD client_dll) {
+  static QWORD cached = 0;
+  static QWORD cached_base = 0;
+  if (cached && cached_base == client_dll)
+    return cached;
+
+  const QWORD start = client_dll + 0x4600000;
+  const QWORD size = 0x4BA3000 - 0x4600000;
+
+  //
+  // the bss contains unmapped holes, so read in overlapping chunks instead of
+  // one big block (a short read fails the whole transfer).
+  //
+  const QWORD chunk = 0x10000;
+  const QWORD overlap = 0x80;
+  static BYTE buffer[0x10000];
+
+  for (QWORD off = 0; off < size; off += chunk - overlap) {
+    QWORD len = qmin(chunk, size - off);
+    if (!vm::read(cs2::game_handle, start + off, buffer, len))
+      continue;
+
+    for (QWORD i = (off ? 0x40 : 0x40); i + 64 <= len; i += 4) {
+      const float *m = (const float *)(buffer + i);
+      BOOL ok = 1;
+
+      for (int k = 0; k < 16; k++) {
+        if (m[k] != m[k] || qabs(m[k]) > 1e6f) {
+          ok = 0;
+          break;
+        }
+      }
+      if (!ok)
+        continue;
+
+      if (qabs(m[12]) > 1e-3f || qabs(m[13]) > 1e-3f || qabs(m[14]) > 1e-3f ||
+          qabs(m[15] - 1.f) > 1e-3f)
+        continue;
+
+      //
+      // the projection matrix sits directly before the view matrix, so require
+      // its shape too: x/y scale on the diagonal, (0,0,-1,0) as the w row and a
+      // negative depth bias.
+      //
+      const float *p = m - 16;
+      if (qabs(p[12]) > 1e-3f || qabs(p[13]) > 1e-3f ||
+          qabs(p[14] + 1.f) > 1e-3f || qabs(p[15]) > 1e-3f)
+        continue;
+      if (p[0] < 0.4f || p[0] > 2.5f || qabs(p[1]) > 1e-3f ||
+          qabs(p[4]) > 1e-3f || p[5] < 0.5f || p[5] > 4.f)
+        continue;
+      if (qabs(p[8]) > 0.05f || qabs(p[9]) > 0.05f ||
+          qabs(p[10] + 1.f) > 0.01f || p[11] > -0.1f)
+        continue;
+
+    const float *r0 = m, *r1 = m + 4, *r2 = m + 8;
+
+    const float l0 = sqrtf(r0[0] * r0[0] + r0[1] * r0[1] + r0[2] * r0[2]);
+    const float l1 = sqrtf(r1[0] * r1[0] + r1[1] * r1[1] + r1[2] * r1[2]);
+    const float l2 = sqrtf(r2[0] * r2[0] + r2[1] * r2[1] + r2[2] * r2[2]);
+    if (qabs(l0 - 1.f) > 0.02f || qabs(l1 - 1.f) > 0.02f ||
+        qabs(l2 - 1.f) > 0.02f)
+      continue;
+
+    if (qabs(r0[0] * r1[0] + r0[1] * r1[1] + r0[2] * r1[2]) > 0.02f ||
+        qabs(r0[0] * r2[0] + r0[1] * r2[1] + r0[2] * r2[2]) > 0.02f ||
+        qabs(r1[0] * r2[0] + r1[1] * r2[1] + r1[2] * r2[2]) > 0.02f)
+      continue;
+
+    const float cx = r1[1] * r2[2] - r1[2] * r2[1];
+    const float cy = r1[2] * r2[0] - r1[0] * r2[2];
+    const float cz = r1[0] * r2[1] - r1[1] * r2[0];
+    const float det = r0[0] * cx + r0[1] * cy + r0[2] * cz;
+    if (det < 0.9f || det > 1.1f)
+      continue;
+
+    if (qabs(r0[2]) > 0.35f)
+      continue;
+
+      const float tx = m[3], ty = m[7], tz = m[11];
+      const float tl = sqrtf(tx * tx + ty * ty + tz * tz);
+      if (tl < 100.f || tl > 1e5f)
+        continue;
+
+      cached = start + off + i;
+      cached_base = client_dll;
+      return cached;
+    }
+  }
+
+  return 0;
+}
 
 static BOOL cs2::initialize(void) {
   if (game_handle) {
@@ -218,15 +321,15 @@ static BOOL cs2::initialize(void) {
 
   if (vm::get_target_os() == VmOs::Linux) {
     //
-    // viewmatrix: c6 83 ? ? 00 00 01 4c 8d 05
+    // the old patterns (48 8d 05 ? ? ? ? 4c 8d 05 ... / c6 83 ? ? 00 00 01
+    // 4c 8d 05) now land on unrelated tables, so the live camera matrix is
+    // located structurally in the module's bss instead: a 4x4 view matrix
+    // whose last row is (0,0,0,1), whose 3x3 part is a proper rotation and
+    // whose translation is sane, immediately preceded by the 4x4 projection
+    // matrix (`direct::view_proj` stays 0x40 before it).
     //
-    JZ(direct::view_matrix =
-           vm::scan_pattern_direct(game_handle, client_dll,
-                                   "\xC6\x83\x00\x00\x00\x00\x01\x4C\x8D\x05",
-                                   "xxx????xxx", 10),
-       E1);
-    direct::view_matrix =
-        vm::get_relative_address(game_handle, direct::view_matrix + 0xA, 3, 7);
+    JZ(direct::view_matrix = resolve_view_matrix(client_dll), E1);
+    direct::view_proj = direct::view_matrix - 0x40;
   } else {
     //
     // viewmatrix: 48 63 c2 48 8d 0d ? ? ? ? 48 c1
@@ -244,7 +347,9 @@ static BOOL cs2::initialize(void) {
   JZ(convars::mp_teammates_are_enemies =
          engine::get_convar("mp_teammates_are_enemies"),
      E1);
-  JZ(convars::cl_crosshairalpha = engine::get_convar("cl_crosshairalpha"), E1);
+  JZ(convars::mm_dedicated_search_maxping =
+         engine::get_convar("mm_dedicated_search_maxping"),
+     E1);
 
   //
   // to-do schemas
@@ -265,125 +370,105 @@ static BOOL cs2::initialize(void) {
       goto E1;
     }
 
+    //
+    // ClassFieldData layout (verified against live memory):
+    //   +0x00 name, +0x08 schema type, +0x10 offset
+    // Offsets are taken as-is; duplicate field names in unrelated classes are
+    // handled with small sanity windows where they matter.
+    //
     QWORD base = *(QWORD *)((QWORD)dump_client - 16);
     QWORD size = *(QWORD *)((QWORD)dump_client - 8);
     for (QWORD i = size - sizeof(QWORD); i--;) {
       QWORD entry = ((QWORD)dump_client + i);
 
-      BOOL network_enable = 0;
-      {
-        QWORD ptr_to_name = *(QWORD *)(entry);
-        if (ptr_to_name >= base && ptr_to_name <= (base + size)) {
-          ptr_to_name = *(QWORD *)((ptr_to_name - base) + (QWORD)dump_client);
-          if (ptr_to_name >= base && ptr_to_name <= (base + size)) {
-            if (!strcmpi_imp((const char *)(ptr_to_name - base) +
-                                 (QWORD)dump_client,
-                             "MNetworkEnable")) {
-              network_enable = 1;
-            }
-          }
-        }
-      }
-
-      QWORD name_ptr;
-      if (network_enable == 0) {
-        name_ptr = *(QWORD *)(entry);
-        if (name_ptr < base) {
-          continue;
-        }
-        if (name_ptr > (base + size)) {
-          continue;
-        }
-      } else {
-        name_ptr = *(QWORD *)(entry + 0x08);
-        if (name_ptr < base) {
-          continue;
-        }
-        if (name_ptr > (base + size)) {
-          continue;
-        }
+      QWORD name_ptr = *(QWORD *)(entry);
+      if (name_ptr < base || name_ptr > (base + size)) {
+        continue;
       }
 
       PCSTR netvar_name = (PCSTR)((name_ptr - base) + (QWORD)dump_client);
 
-      if (!netvars::m_iHealth && !strcmpi_imp(netvar_name, "m_iHealth") &&
-          network_enable) {
-        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08 + 0x10));
-        netvars::m_iHealth = *(int *)(entry + 0x08 + 0x10);
+      if (!netvars::m_iHealth && !strcmpi_imp(netvar_name, "m_iHealth")) {
+        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x10));
+        netvars::m_iHealth = *(int *)(entry + 0x10);
       } else if (!netvars::m_iTeamNum &&
-                 !strcmpi_imp(netvar_name, "m_iTeamNum") && network_enable) {
-        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08 + 0x10));
-        netvars::m_iTeamNum = *(int *)(entry + 0x08 + 0x10);
-      } else if (!netvars::m_hPawn && !strcmpi_imp(netvar_name, "m_hPawn") &&
-                 network_enable) {
-        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08 + 0x10));
-        netvars::m_hPawn = *(int *)(entry + 0x08 + 0x10);
+                 !strcmpi_imp(netvar_name, "m_iTeamNum")) {
+        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x10));
+        netvars::m_iTeamNum = *(int *)(entry + 0x10);
+      } else if (!netvars::m_hPawn && !strcmpi_imp(netvar_name, "m_hPawn")) {
+        int offset = *(int *)(entry + 0x10);
+        if (offset < 0x800 || offset > 0x1000) {
+          continue;
+        }
+        LOG("%s, %x\n", netvar_name, offset);
+        netvars::m_hPawn = offset;
       } else if (!netvars::m_lifeState &&
-                 !strcmpi_imp(netvar_name, "m_lifeState") && network_enable) {
-        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08 + 0x10));
-        netvars::m_lifeState = *(int *)(entry + 0x08 + 0x10);
+                 !strcmpi_imp(netvar_name, "m_lifeState")) {
+        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x10));
+        netvars::m_lifeState = *(int *)(entry + 0x10);
       } else if (!netvars::m_vecViewOffset &&
-                 !strcmpi_imp(netvar_name, "m_vecViewOffset") &&
-                 network_enable) {
-        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08 + 0x10));
-        netvars::m_vecViewOffset = *(int *)(entry + 0x08 + 0x10);
+                 !strcmpi_imp(netvar_name, "m_vecViewOffset")) {
+        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x10));
+        netvars::m_vecViewOffset = *(int *)(entry + 0x10);
       } else if (!netvars::m_pAimPunchServices &&
                  !strcmpi_imp(netvar_name, "m_pAimPunchServices")) {
         LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x10));
         netvars::m_pAimPunchServices = *(int *)(entry + 0x10);
       } else if (!netvars::m_iShotsFired &&
-                 !strcmpi_imp(netvar_name, "m_iShotsFired") && network_enable) {
-        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08 + 0x10));
-        netvars::m_iShotsFired = *(int *)(entry + 0x08 + 0x10);
+                 !strcmpi_imp(netvar_name, "m_iShotsFired")) {
+        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x10));
+        netvars::m_iShotsFired = *(int *)(entry + 0x10);
       } else if (!netvars::m_flFOVSensitivityAdjust &&
                  !strcmpi_imp(netvar_name, "m_flFOVSensitivityAdjust")) {
-        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08));
-        netvars::m_flFOVSensitivityAdjust = *(int *)(entry + 0x08);
+        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x10));
+        netvars::m_flFOVSensitivityAdjust = *(int *)(entry + 0x10);
       } else if (!netvars::m_pGameSceneNode &&
                  !strcmpi_imp(netvar_name, "m_pGameSceneNode")) {
         LOG("%s, %x\n", netvar_name, *(WORD *)(entry + 0x10));
         netvars::m_pGameSceneNode = *(WORD *)(entry + 0x10);
       } else if (!netvars::m_bDormant &&
                  !strcmpi_imp(netvar_name, "m_bDormant")) {
-        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08));
-        netvars::m_bDormant = *(int *)(entry + 0x08);
+        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x10));
+        netvars::m_bDormant = *(int *)(entry + 0x10);
       } else if (!netvars::m_modelState &&
                  !strcmpi_imp(netvar_name, "m_modelState")) {
-        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08));
-        netvars::m_modelState = *(int *)(entry + 0x08);
+        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x10));
+        netvars::m_modelState = *(int *)(entry + 0x10);
       } else if (!netvars::m_vecOrigin &&
-                 !strcmpi_imp(netvar_name, "m_vecOrigin") && network_enable) {
-        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08 + 0x10));
-        netvars::m_vecOrigin = *(int *)(entry + 0x08 + 0x10);
+                 !strcmpi_imp(netvar_name, "m_vecOrigin")) {
+        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x10));
+        netvars::m_vecOrigin = *(int *)(entry + 0x10);
         if (netvars::m_vecOrigin > 0x200)
           netvars::m_vecOrigin = 0;
       } else if (!netvars::m_vOldOrigin &&
                  !strcmpi_imp(netvar_name, "m_vOldOrigin")) {
-        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08));
-        netvars::m_vOldOrigin = *(int *)(entry + 0x08);
-      } else if (!netvars::m_bIsDefusing && network_enable &&
+        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x10));
+        netvars::m_vOldOrigin = *(int *)(entry + 0x10);
+      } else if (!netvars::m_bIsDefusing &&
                  !strcmpi_imp(netvar_name, "m_bIsDefusing")) {
-        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08 + 0x10));
-        netvars::m_bIsDefusing = *(int *)(entry + 0x08 + 0x10);
-      } else if (!netvars::m_bPawnHasDefuser && network_enable &&
+        int offset = *(int *)(entry + 0x10);
+        if (offset < 0x1000) {
+          continue;
+        }
+        LOG("%s, %x\n", netvar_name, offset);
+        netvars::m_bIsDefusing = offset;
+      } else if (!netvars::m_bPawnHasDefuser &&
                  !strcmpi_imp(netvar_name, "m_bPawnHasDefuser")) {
-        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08 + 0x10));
-        netvars::m_bPawnHasDefuser = *(int *)(entry + 0x08 + 0x10);
+        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x10));
+        netvars::m_bPawnHasDefuser = *(int *)(entry + 0x10);
       } else if (!netvars::m_hActiveWeapon &&
-                 !strcmpi_imp(netvar_name, "m_hActiveWeapon") &&
-                 network_enable) {
-        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08 + 0x10));
-        netvars::m_hActiveWeapon = *(int *)(entry + 0x08 + 0x10);
+                 !strcmpi_imp(netvar_name, "m_hActiveWeapon")) {
+        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x10));
+        netvars::m_hActiveWeapon = *(int *)(entry + 0x10);
       } else if ((netvars::m_pWeaponServices < 0x1000 ||
                   netvars::m_pWeaponServices > 0x2000) &&
                  !strcmpi_imp(netvar_name, "m_pWeaponServices")) {
         LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x10));
         netvars::m_pWeaponServices = *(int *)(entry + 0x10);
       } else if (!netvars::m_angEyeAngles &&
-                 !strcmpi_imp(netvar_name, "m_angEyeAngles") &&
-                 network_enable) {
-        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08 + 0x10));
-        netvars::m_angEyeAngles = *(int *)(entry + 0x08 + 0x10);
+                 !strcmpi_imp(netvar_name, "m_angEyeAngles")) {
+        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x10));
+        netvars::m_angEyeAngles = *(int *)(entry + 0x10);
       }
     }
     vm::free_module(dump_client);
@@ -679,6 +764,24 @@ vec2 cs2::engine::get_viewangles(void) {
 view_matrix_t cs2::engine::get_viewmatrix(void) {
   view_matrix_t matrix{};
 
+  if (vm::get_target_os() == VmOs::Linux) {
+    float view[4][4], proj[4][4];
+
+    if (!vm::read(game_handle, direct::view_matrix, view, sizeof(view)) ||
+        !vm::read(game_handle, direct::view_proj, proj, sizeof(proj)))
+      return matrix;
+
+    for (int i = 0; i < 4; i++)
+      for (int j = 0; j < 4; j++) {
+        float sum = 0.f;
+        for (int k = 0; k < 4; k++)
+          sum += proj[i][k] * view[k][j];
+        matrix[i][j] = sum;
+      }
+
+    return matrix;
+  }
+
   vm::read(game_handle, direct::view_matrix, &matrix, sizeof(matrix));
 
   return matrix;
@@ -746,7 +849,7 @@ BOOL cs2::entity::has_defuser(QWORD entity) {
 }
 
 int cs2::get_crosshairalpha(void) {
-  return vm::read_i32(game_handle, convars::cl_crosshairalpha + 0x58);
+  return vm::read_i32(game_handle, convars::mm_dedicated_search_maxping + 0x58);
 }
 
 float cs2::mouse::get_sensitivity(void) {
@@ -780,7 +883,11 @@ DWORD cs2::player::get_team_num(QWORD player) {
 }
 
 int cs2::player::get_life_state(QWORD player) {
-  return vm::read_i32(game_handle, player + netvars::m_lifeState);
+  //
+  // m_lifeState is a u8 enum (0 = alive); reading i32 picks up the
+  // neighbouring boolean and reports 256 for a live player
+  //
+  return vm::read_i8(game_handle, player + netvars::m_lifeState);
 }
 
 vec3 cs2::player::get_origin(QWORD player) {
@@ -863,7 +970,8 @@ cs2::WEAPON_CLASS cs2::player::get_weapon_class(QWORD player) {
   // C_EconItemView::m_iItemDefinitionIndex
   //
   WORD weapon_index =
-      vm::read_i16(game_handle, weapon + 0x1108 + 0x50 + 0x10C2);
+      vm::read_i16(game_handle, weapon + 0x1218 + 0x50 + 0x10C2);
+  (void)weapon_index;
 
   /* knife */
   {
@@ -938,16 +1046,27 @@ QWORD cs2::player::get_node(QWORD player) {
   return vm::read_i64(game_handle, player + netvars::m_pGameSceneNode);
 }
 
+QWORD cs2::player::get_weapon_services(QWORD player) {
+  return vm::read_i64(game_handle, player + netvars::m_pWeaponServices);
+}
+
 QWORD cs2::player::get_weapon_address(QWORD player) {
-  QWORD weapon_services =
-      vm::read_i64(game_handle, player + netvars::m_pWeaponServices);
+  QWORD weapon_services = get_weapon_services(player);
   if (!weapon_services)
     return 0;
 
   int index =
       vm::read_i32(game_handle, weapon_services + netvars::m_hActiveWeapon) &
-      0xFFF;
+      0x7FFF;
   return cs2::entity::get_client_entity(index);
+}
+
+WORD cs2::player::get_weapon_def_index(QWORD player) {
+  QWORD weapon = get_weapon_address(player);
+  if (weapon == 0) {
+    return 0;
+  }
+  return vm::read_i16(game_handle, weapon + 0x1218 + 0x50 + 0x10C2);
 }
 
 BOOL cs2::player::is_defusing(QWORD player) {
@@ -1018,9 +1137,79 @@ static QWORD cs2::get_interface(QWORD base, PCSTR name) {
   }
 
   if (vm::get_target_os() == VmOs::Linux) {
-    export_address =
-        vm::get_relative_address(game_handle, export_address, 1, 5);
-    export_address += 0x10;
+    //
+    // the CreateInterface prelude loads the interface list with
+    // mov rbx, [rip+X] (48 8b 1d) - scan the first 0x40 bytes for it
+    //
+    QWORD table = 0;
+    for (QWORD i = 0; i + 7 < 0x40; i++) {
+      unsigned char bytes[3]{};
+      if (!vm::read(game_handle, export_address + i, bytes, sizeof(bytes))) {
+        break;
+      }
+
+      if (bytes[0] == 0x48 && bytes[1] == 0x8B && bytes[2] == 0x1D) {
+        table = vm::read_i64(game_handle, vm::get_relative_address(
+                                               game_handle,
+                                               export_address + i, 3, 7));
+        break;
+      }
+    }
+    if (table == 0) {
+      return 0;
+    }
+
+    //
+    // walk InterfaceReg { create_fn, name, next }
+    //
+    QWORD interface_entry = table;
+    QWORD name_length = strlen_imp(name);
+
+    while (interface_entry) {
+      char interface_name[120]{};
+      vm::read(game_handle, vm::read_i64(game_handle, interface_entry + 8),
+               interface_name, name_length);
+
+      interface_name[name_length] = 0;
+
+      if (!strcmpi_imp(interface_name, name)) {
+        //
+        // emulate the create function: walk its instructions
+        //   lea rax, [rip+X]      (48 8d 05) - remember target
+        //   mov rax, [rax]        (48 8b 00) - deref
+        //   ret                   (c3)       - done
+        //
+        QWORD create_fn = vm::read_i64(game_handle, interface_entry);
+        QWORD addr = 0;
+        QWORD pointer = create_fn;
+
+        for (int i = 0; i < 64 && pointer; i++) {
+          unsigned char insn[15]{};
+          if (!vm::read(game_handle, pointer, insn, sizeof(insn))) {
+            break;
+          }
+
+          if (insn[0] == 0xC3) {
+            return addr;
+          } else if (insn[0] == 0x48 && insn[1] == 0x8D && insn[2] == 0x05) {
+            addr = (pointer + 7) + vm::read_i32(game_handle, pointer + 3);
+            pointer += 7;
+          } else if (insn[0] == 0x48 && insn[1] == 0x8B && insn[2] == 0x00) {
+            addr = vm::read_i64(game_handle, addr);
+            pointer += 2;
+          } else if (insn[0] == 0xF3 && insn[1] == 0x0F && insn[2] == 0x1E &&
+                     insn[3] == 0xFA) {
+            pointer += 4; // endbr64
+          } else {
+            pointer += 1;
+          }
+        }
+        return addr;
+      }
+
+      interface_entry = vm::read_i64(game_handle, interface_entry + 16);
+    }
+    return 0;
   }
 
   QWORD interface_entry = vm::read_i64(

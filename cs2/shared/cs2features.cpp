@@ -313,6 +313,7 @@ void cs2::features::run(void) {
   }
 
   weapon_class = cs2::player::get_weapon_class(local_player);
+
   if (weapon_class == cs2::WEAPON_CLASS::Invalid) {
     return;
   }
@@ -568,14 +569,18 @@ static void cs2::features::get_best_target(BOOL ffa, QWORD local_controller,
   vec3 angle{};
   vec3 aimpos{};
 
+  int dbg_ents = 0, dbg_players = 0, dbg_valid = 0, dbg_bone = 0;
+
   // for each player
   for (int i = 1; i < 64; i++) {
     QWORD ent = cs2::entity::get_client_entity(i);
 
     if (ent == 0 || (ent == local_controller)) continue;
+    dbg_ents++;
 
     // is controller
     if (!cs2::entity::is_player(ent)) continue;
+    dbg_players++;
 
     QWORD player = cs2::entity::get_player(ent);
     if (player == 0) continue;
@@ -586,9 +591,11 @@ static void cs2::features::get_best_target(BOOL ffa, QWORD local_controller,
     if (node == 0) continue;
 
     if (!cs2::player::is_valid(player, node)) continue;
+    dbg_valid++;
 
     vec3 head{};
     if (!cs2::node::get_bone_position(node, 6, &head)) continue;
+    dbg_bone++;
 
     if (config::visuals_enabled) esp(local_player, player, head);
 
@@ -604,8 +611,17 @@ static void cs2::features::get_best_target(BOOL ffa, QWORD local_controller,
     }
   }
 
-  if (best_fov != 360.0f) {
-    event_state = 1;
+  {
+    static DWORD dbg_ms;
+    DWORD now = cs2::engine::get_current_ms();
+    if (now - dbg_ms > 1000) {
+      dbg_ms = now;
+      LOG("dbg scan ents %d ctrl %d valid %d bone %d target %p\n", dbg_ents,
+          dbg_players, dbg_valid, dbg_bone, (void *)*target);
+    }
+  }
+
+  if (best_fov != 360.0f) {    event_state = 1;
     features::has_target_event(local_player, *target, best_fov, aim_punch,
                                angle, va, aimpos);
   }
@@ -723,9 +739,8 @@ x, y, w, h, (unsigned char)r, (unsigned char)g, (unsigned char)b); #endif
 
   if (!math::world_to_screen(screen_size, origin, screen_bottom, view_matrix) ||
       !math::world_to_screen(screen_size, top_origin, screen_top,
-                             view_matrix)) {
+                             view_matrix))
     return;
-  }
 
   float target_health =
       ((float)cs2::player::get_health(target_player) / 100.0f) * 255.0f;
