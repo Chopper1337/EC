@@ -18,7 +18,6 @@ static QWORD player;
 
 namespace direct {
 static QWORD local_player;
-static QWORD view_angles;
 static QWORD view_matrix;
 static DWORD button_state;
 } // namespace direct
@@ -40,11 +39,10 @@ static int m_vecOrigin = 0;
 static int m_bDormant = 0;
 static int m_hPawn = 0;
 static int m_modelState = 0;
-static int m_aimPunchCache = 0;
+static int m_pAimPunchServices = 0;
 static int m_iShotsFired = 0;
 static int m_vOldOrigin = 0;
-static int m_pClippingWeapon = 0;
-static int v_angle = 0;
+static int m_angEyeAngles = 0;
 
 static int m_bIsDefusing = 0;
 static int m_bPawnHasDefuser = 0;
@@ -92,9 +90,6 @@ inline int get_entity_off() {
 }
 inline int get_button_off() {
   return vm::get_target_os() == VmOs::Windows ? 0x13 : 0x14;
-}
-inline int get_viewangles_off() {
-  return vm::get_target_os() == VmOs::Windows ? 0x6140 : 0x4528;
 }
 
 #ifdef DEBUG
@@ -151,6 +146,16 @@ static BOOL cs2::initialize(void) {
     JZ(sdl::sdl_window = vm::read_i64(game_handle, sdl::sdl_window), E1);
     sdl::sdl_window =
         vm::get_relative_address(game_handle, sdl::sdl_window, 3, 7);
+
+    JZ(sdl::sdl_mouse =
+           vm::get_module_export(game_handle, sdl, "SDL_GetMouseFocus"),
+       E1);
+    sdl::sdl_mouse =
+        vm::get_relative_address(game_handle, sdl::sdl_mouse, 2, 6);
+    JZ(sdl::sdl_mouse = vm::read_i64(game_handle, sdl::sdl_mouse), E1);
+    sdl::sdl_mouse =
+        vm::get_relative_address(game_handle, sdl::sdl_mouse, 3, 7);
+    sdl::sdl_mouse += 8;
   } else {
     JZ(sdl::sdl_window =
            vm::get_module_export(game_handle, sdl, "SDL_GetKeyboardFocus"),
@@ -190,11 +195,11 @@ static BOOL cs2::initialize(void) {
   if (vm::get_target_os() == VmOs::Linux) {
     JZ(direct::local_player = vm::scan_pattern_direct(
            game_handle, client_dll,
-           "\x48\x83\x3D\x00\x00\x00\x00\x00\x0F\x95\xC0\xC3", "xxx????xxxxx",
-           12),
+           "\x4C\x89\x25\x00\x00\x00\x00\xE8\x00\x00\x00\x00\x48\x8B\x45",
+           "xxx????x????xxx", 15),
        E1);
     direct::local_player =
-        vm::get_relative_address(game_handle, direct::local_player, 3, 8);
+        vm::get_relative_address(game_handle, direct::local_player, 3, 7);
   } else {
     /*
     JZ(direct::local_player = get_interface(client_dll,
@@ -211,24 +216,17 @@ static BOOL cs2::initialize(void) {
         vm::get_relative_address(game_handle, direct::local_player, 3, 8);
   }
 
-  JZ(direct::view_angles = get_interface(client_dll, "Source2Client0"), E1);
-  direct::view_angles = vm::get_relative_address(
-      game_handle, get_interface_function(direct::view_angles, 16), 3, 7);
-  JZ(direct::view_angles = vm::read_i64(game_handle, direct::view_angles), E1);
-  direct::view_angles += get_viewangles_off();
-
   if (vm::get_target_os() == VmOs::Linux) {
     //
-    // viewmatrix: 48 8d 05 ? ? ? ? 4c 8d 05 ? ? ? ? 48 8d 0d
+    // viewmatrix: c6 83 ? ? 00 00 01 4c 8d 05
     //
     JZ(direct::view_matrix =
            vm::scan_pattern_direct(game_handle, client_dll,
-                                   "\x48\x8D\x05\x00\x00\x00\x00\x4C\x8D\x05"
-                                   "\x00\x00\x00\x00\x48\x8D\x0D",
-                                   "xxx????xxx????xxx", 17),
+                                   "\xC6\x83\x00\x00\x00\x00\x01\x4C\x8D\x05",
+                                   "xxx????xxx", 10),
        E1);
     direct::view_matrix =
-        vm::get_relative_address(game_handle, direct::view_matrix + 0x7, 3, 7);
+        vm::get_relative_address(game_handle, direct::view_matrix + 0xA, 3, 7);
   } else {
     //
     // viewmatrix: 48 63 c2 48 8d 0d ? ? ? ? 48 c1
@@ -257,7 +255,6 @@ static BOOL cs2::initialize(void) {
   LOG("interfaces::entity     %p\n", (void *)interfaces::entity);
   LOG("interfaces::player     %p\n", (void *)interfaces::player);
   LOG("direct::local_player   %p\n", (void *)direct::local_player);
-  LOG("direct::view_angles    %p\n", (void *)direct::view_angles);
   LOG("direct::view_matrix    %p\n", (void *)direct::view_matrix);
   LOG("game is running\n");
 
@@ -330,11 +327,10 @@ static BOOL cs2::initialize(void) {
                  network_enable) {
         LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08 + 0x10));
         netvars::m_vecViewOffset = *(int *)(entry + 0x08 + 0x10);
-      } else if (!netvars::m_aimPunchCache &&
-                 !strcmpi_imp(netvar_name, "m_aimPunchCache") &&
-                 network_enable) {
-        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08 + 0x10));
-        netvars::m_aimPunchCache = *(int *)(entry + 0x08 + 0x10);
+      } else if (!netvars::m_pAimPunchServices &&
+                 !strcmpi_imp(netvar_name, "m_pAimPunchServices")) {
+        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x10));
+        netvars::m_pAimPunchServices = *(int *)(entry + 0x10);
       } else if (!netvars::m_iShotsFired &&
                  !strcmpi_imp(netvar_name, "m_iShotsFired") && network_enable) {
         LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08 + 0x10));
@@ -365,13 +361,29 @@ static BOOL cs2::initialize(void) {
                  !strcmpi_imp(netvar_name, "m_vOldOrigin")) {
         LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08));
         netvars::m_vOldOrigin = *(int *)(entry + 0x08);
-      } else if (!netvars::m_pClippingWeapon &&
-                 !strcmpi_imp(netvar_name, "m_pClippingWeapon")) {
+      } else if (!netvars::m_bIsDefusing && network_enable &&
+                 !strcmpi_imp(netvar_name, "m_bIsDefusing")) {
+        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08 + 0x10));
+        netvars::m_bIsDefusing = *(int *)(entry + 0x08 + 0x10);
+      } else if (!netvars::m_bPawnHasDefuser && network_enable &&
+                 !strcmpi_imp(netvar_name, "m_bPawnHasDefuser")) {
+        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08 + 0x10));
+        netvars::m_bPawnHasDefuser = *(int *)(entry + 0x08 + 0x10);
+      } else if (!netvars::m_hActiveWeapon &&
+                 !strcmpi_imp(netvar_name, "m_hActiveWeapon") &&
+                 network_enable) {
+        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08 + 0x10));
+        netvars::m_hActiveWeapon = *(int *)(entry + 0x08 + 0x10);
+      } else if ((netvars::m_pWeaponServices < 0x1000 ||
+                  netvars::m_pWeaponServices > 0x2000) &&
+                 !strcmpi_imp(netvar_name, "m_pWeaponServices")) {
         LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x10));
-        netvars::m_pClippingWeapon = *(int *)(entry + 0x10);
-      } else if (!netvars::v_angle && !strcmpi_imp(netvar_name, "v_angle")) {
-        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08));
-        netvars::v_angle = *(int *)(entry + 0x08);
+        netvars::m_pWeaponServices = *(int *)(entry + 0x10);
+      } else if (!netvars::m_angEyeAngles &&
+                 !strcmpi_imp(netvar_name, "m_angEyeAngles") &&
+                 network_enable) {
+        LOG("%s, %x\n", netvar_name, *(int *)(entry + 0x08 + 0x10));
+        netvars::m_angEyeAngles = *(int *)(entry + 0x08 + 0x10);
       }
     }
     vm::free_module(dump_client);
@@ -460,11 +472,10 @@ static BOOL cs2::initialize(void) {
                    network_enable) {
           LOG("%s, %x\n", netvar_name, *(int *)(dos_header + j + 0x08 + 0x10));
           netvars::m_vecViewOffset = *(int *)(dos_header + j + 0x08 + 0x10);
-        } else if (!netvars::m_aimPunchCache &&
-                   !strcmpi_imp(netvar_name, "m_aimPunchCache") &&
-                   network_enable) {
-          LOG("%s, %x\n", netvar_name, *(int *)(dos_header + j + 0x08 + 0x10));
-          netvars::m_aimPunchCache = *(int *)(dos_header + j + 0x08 + 0x10);
+        } else if (!netvars::m_pAimPunchServices &&
+                   !strcmpi_imp(netvar_name, "m_pAimPunchServices")) {
+          LOG("%s, %x\n", netvar_name, *(int *)(dos_header + j + 0x10));
+          netvars::m_pAimPunchServices = *(int *)(dos_header + j + 0x10);
         } else if (!netvars::m_iShotsFired &&
                    !strcmpi_imp(netvar_name, "m_iShotsFired") &&
                    network_enable) {
@@ -497,13 +508,11 @@ static BOOL cs2::initialize(void) {
                    !strcmpi_imp(netvar_name, "m_vOldOrigin")) {
           LOG("%s, %x\n", netvar_name, *(int *)(dos_header + j + 0x10));
           netvars::m_vOldOrigin = *(int *)(dos_header + j + 0x10);
-        } else if (!netvars::m_pClippingWeapon &&
-                   !strcmpi_imp(netvar_name, "m_pClippingWeapon")) {
-          LOG("%s, %x\n", netvar_name, *(int *)(dos_header + j + 0x10));
-          netvars::m_pClippingWeapon = *(int *)(dos_header + j + 0x10);
-        } else if (!netvars::v_angle && !strcmpi_imp(netvar_name, "v_angle")) {
-          LOG("%s, %x\n", netvar_name, *(int *)(dos_header + j + 0x10));
-          netvars::v_angle = *(int *)(dos_header + j + 0x10);
+        } else if (!netvars::m_angEyeAngles &&
+                   !strcmpi_imp(netvar_name, "m_angEyeAngles") &&
+                   network_enable) {
+          LOG("%s, %x\n", netvar_name, *(int *)(dos_header + j + 0x08 + 0x10));
+          netvars::m_angEyeAngles = *(int *)(dos_header + j + 0x08 + 0x10);
         }
 
         else if (!netvars::m_bIsDefusing && network_enable &&
@@ -542,9 +551,10 @@ static BOOL cs2::initialize(void) {
   JZ(netvars::m_bDormant, E1);
   JZ(netvars::m_hPawn, E1);
   JZ(netvars::m_modelState, E1);
-  JZ(netvars::m_aimPunchCache, E1);
+  JZ(netvars::m_pAimPunchServices, E1);
   JZ(netvars::m_iShotsFired, E1);
   JZ(netvars::m_vOldOrigin, E1);
+  JZ(netvars::m_angEyeAngles, E1);
 
   return 1;
 }
@@ -618,15 +628,14 @@ BOOL cs2::sdl::get_mouse_button(QWORD mouse) {
 }
 
 QWORD cs2::engine::get_convar(const char *name) {
-  QWORD objs = vm::read_i64(game_handle, interfaces::cvar + 64);
+  QWORD objs = vm::read_i64(game_handle, interfaces::cvar + 0x50);
 
   QWORD convar_length = strlen_imp(name);
 
-  for (DWORD i = 0; i < vm::read_i32(game_handle, interfaces::cvar + 160);
-       i++) {
+  for (DWORD i = 0; i < 8000; i++) {
     QWORD entry = vm::read_i64(game_handle, objs + 16 * i);
     if (entry == 0) {
-      break;
+      continue;
     }
 
     char convar_name[120]{};
@@ -650,7 +659,18 @@ DWORD cs2::engine::get_current_ms(void) {
 
 vec2 cs2::engine::get_viewangles(void) {
   vec2 va{};
-  if (!vm::read(game_handle, direct::view_angles, &va, sizeof(va))) {
+
+  QWORD controller = cs2::entity::get_local_player_controller();
+  if (controller == 0) {
+    return va;
+  }
+
+  QWORD pawn = cs2::entity::get_player(controller);
+  if (pawn == 0) {
+    return va;
+  }
+
+  if (!vm::read(game_handle, pawn + netvars::m_angEyeAngles, &va, sizeof(va))) {
     va = {};
   }
   return va;
@@ -674,7 +694,7 @@ QWORD cs2::entity::get_client_entity(int index) {
   if (v2 == 0)
     return 0;
 
-  return vm::read_i64(game_handle, (QWORD)(120 * (index & 0x1FF) + v2));
+  return vm::read_i64(game_handle, (QWORD)(112 * (index & 0x1FF) + v2));
 }
 
 BOOL cs2::entity::is_player(QWORD controller) {
@@ -718,7 +738,7 @@ QWORD cs2::entity::get_player(QWORD controller) {
   if (v2 == 0) {
     return 0;
   }
-  return vm::read_i64(game_handle, v2 + 120 * (v1 & 0x1FF));
+  return vm::read_i64(game_handle, v2 + 112 * (v1 & 0x1FF));
 }
 
 BOOL cs2::entity::has_defuser(QWORD entity) {
@@ -726,15 +746,15 @@ BOOL cs2::entity::has_defuser(QWORD entity) {
 }
 
 int cs2::get_crosshairalpha(void) {
-  return vm::read_i32(game_handle, convars::cl_crosshairalpha + 0x40);
+  return vm::read_i32(game_handle, convars::cl_crosshairalpha + 0x58);
 }
 
 float cs2::mouse::get_sensitivity(void) {
-  return vm::read_float(game_handle, convars::sensitivity + 0x40);
+  return vm::read_float(game_handle, convars::sensitivity + 0x58);
 }
 
 BOOL cs2::gamemode::is_ffa(void) {
-  return vm::read_i32(game_handle, convars::mp_teammates_are_enemies + 0x40) ==
+  return vm::read_i32(game_handle, convars::mp_teammates_are_enemies + 0x58) ==
          1;
 }
 
@@ -794,21 +814,27 @@ float cs2::player::get_fov_multipler(QWORD player) {
 vec2 cs2::player::get_vec_punch(QWORD player) {
   vec2 data{};
 
-  QWORD aim_punch_cache[2]{};
-  if (!vm::read(game_handle, player + netvars::m_aimPunchCache,
-                &aim_punch_cache, sizeof(aim_punch_cache))) {
+  QWORD services =
+      vm::read_i64(game_handle, player + netvars::m_pAimPunchServices);
+  if (services == 0) {
     return data;
   }
 
-  DWORD aimpunch_size = ((DWORD *)&aim_punch_cache[0])[0];
+  //
+  // CCSPlayer_AimPunchServices + 0x88: CUtlVector<QAngle>
+  //   +0x00: count, +0x08: data pointer, element size 12 (QAngle)
+  //
+  DWORD aimpunch_size = vm::read_i32(game_handle, services + 0x88);
   if (aimpunch_size < 1) {
     return data;
   }
 
-  if (aimpunch_size == 129)
-    aimpunch_size = 130;
+  QWORD aim_punch_cache = vm::read_i64(game_handle, services + 0x88 + 0x08);
+  if (aim_punch_cache == 0) {
+    return data;
+  }
 
-  if (!vm::read(game_handle, aim_punch_cache[1] + ((aimpunch_size - 1) * 12),
+  if (!vm::read(game_handle, aim_punch_cache + ((aimpunch_size - 1) * 12),
                 &data, sizeof(data))) {
     data = {};
   }
@@ -818,7 +844,7 @@ vec2 cs2::player::get_vec_punch(QWORD player) {
 
 vec2 cs2::player::get_viewangle(QWORD player) {
   vec2 value{};
-  if (!vm::read(game_handle, player + netvars::v_angle, &value,
+  if (!vm::read(game_handle, player + netvars::m_angEyeAngles, &value,
                 sizeof(value))) {
     value = {};
   }
@@ -826,7 +852,7 @@ vec2 cs2::player::get_viewangle(QWORD player) {
 }
 
 cs2::WEAPON_CLASS cs2::player::get_weapon_class(QWORD player) {
-  QWORD weapon = vm::read_i64(game_handle, player + netvars::m_pClippingWeapon);
+  QWORD weapon = get_weapon_address(player);
 
   if (weapon == 0) {
     return cs2::WEAPON_CLASS::Invalid;
@@ -836,7 +862,8 @@ cs2::WEAPON_CLASS cs2::player::get_weapon_class(QWORD player) {
   // C_EconEntity::m_AttributeManager + C_AttributeContainer::m_Item +
   // C_EconItemView::m_iItemDefinitionIndex
   //
-  WORD weapon_index = vm::read_i16(game_handle, weapon + 0x1140 + 0x50 + 0x1BA);
+  WORD weapon_index =
+      vm::read_i16(game_handle, weapon + 0x1108 + 0x50 + 0x10C2);
 
   /* knife */
   {
@@ -942,7 +969,7 @@ BOOL cs2::player::is_valid(QWORD player, QWORD node) {
   }
 
   int player_lifestate = get_life_state(player);
-  if (player_lifestate != 256) {
+  if (player_lifestate != 0) {
     return 0;
   }
 
